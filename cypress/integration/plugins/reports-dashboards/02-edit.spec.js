@@ -51,9 +51,7 @@ describe('Cypress', () => {
     cy.wait('@notebook');
 
     // update the report name
-    cy.get('#reportSettingsName')
-      .click({ force: true })
-      .type('{selectall}{backspace} update name');
+    cy.get('#reportSettingsName').type('{selectall}{backspace} update name');
 
     // update report description
     cy.get('#reportSettingsDescription').type(
