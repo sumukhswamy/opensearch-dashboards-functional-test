@@ -1,0 +1,47 @@
+{
+  "name": "sample_days_interval_query_level_monitor",
+  "enabled": true,
+  "schedule": {
+    "period": {
+      "interval": "7",
+      "unit": "DAYS"
+    }
+  },
+  "inputs": [
+    {
+      "search": {
+        "indices": ["*"],
+        "query": {
+          "query": {
+            "match_all": {}
+          }
+        }
+      }
+    }
+  ],
+  "ui_metadata": {
+    "schedule": {
+      "cronExpression": "0 */1 * * *",
+      "period": {
+        "unit": "DAYS",
+        "interval": 7
+      },
+      "timezone": null,
+      "daily": 0,
+      "monthly": {
+        "type": "day",
+        "day": 1
+      },
+      "weekly": {
+        "tue": false,
+        "wed": false,
+        "thur": false,
+        "sat": false,
+        "fri": false,
+        "mon": false,
+        "sun": false
+      },
+      "frequency": "interval"
+    }
+  }
+}

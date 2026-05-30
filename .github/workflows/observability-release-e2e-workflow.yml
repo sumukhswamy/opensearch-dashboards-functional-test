@@ -1,0 +1,39 @@
+name: Observability Release tests workflow in Bundled OpenSearch Dashboards
+on:
+  pull_request:
+    branches: [ '**' ]
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      tests: ${{ steps.filter.outputs.tests }}
+    steps:
+    - uses: dorny/paths-filter@v2
+      id: filter
+      with:
+        filters: |
+          tests:
+            - 'cypress/**/observability-dashboards/**'
+            - '.github/workflows/release-e2e-workflow-template.yml'
+            - '.github/workflows/observability-release-e2e-workflow.yml'
+
+  tests-with-security:
+    needs: changes
+    if: ${{ needs.changes.outputs.tests == 'true' }}
+    uses: ./.github/workflows/release-e2e-workflow-template.yml
+    with:
+      test-name: Observability
+      test-command: yarn cypress:run-with-security --browser electron --spec 'cypress/integration/plugins/observability-dashboards/*'
+      osd-serve-args: --home.disableExperienceModal=true --home.disableWelcomeScreen=true
+      artifact-name-suffix: '-with-security'
+
+  tests-without-security:
+    needs: changes
+    if: ${{ needs.changes.outputs.tests == 'true' }}
+    uses: ./.github/workflows/release-e2e-workflow-template.yml
+    with:
+      test-name: Observability
+      test-command: yarn cypress:run-without-security --browser electron --spec 'cypress/integration/plugins/observability-dashboards/*'
+      osd-serve-args: --home.disableExperienceModal=true --home.disableWelcomeScreen=true
+      security-enabled: false
+      artifact-name-suffix: '-without-security'

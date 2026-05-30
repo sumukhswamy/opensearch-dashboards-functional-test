@@ -1,0 +1,218 @@
+/*
+ * Copyright OpenSearch Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { MiscUtils } from '@opensearch-dashboards-test/opensearch-dashboards-test-library';
+import { CURRENT_TENANT } from '../../../../../utils/commands';
+
+const miscUtils = new MiscUtils(cy);
+const indexSet = [
+  'logstash-2015.09.22',
+  'logstash-2015.09.21',
+  'logstash-2015.09.20',
+];
+
+describe('shared links', () => {
+  before(() => {
+    CURRENT_TENANT.newTenant = 'global';
+    cy.fleshTenantSettings();
+    cy.importJSONMapping(
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/discover/discover.mappings.json.txt'
+    );
+
+    cy.importJSONDoc(
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/discover/discover.json.txt'
+    );
+
+    // import logstash functional
+    cy.importJSONDocIfNeeded(
+      indexSet,
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/logstash/logstash.mappings.json.txt',
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/logstash/logstash.json.txt'
+    );
+
+    cy.setAdvancedSetting({
+      defaultIndex: 'logstash-*',
+    });
+
+    miscUtils.visitPage(
+      `app/data-explorer/discover#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'2015-09-19T13:31:44.000Z',to:'2015-09-24T01:31:44.000Z'))`
+    );
+    cy.waitForLoader();
+    cy.get(
+      '[data-test-subj="docTable"], [data-test-subj="discoverNoResults"], [data-test-subj="loadingSpinner"], [data-test-subj="discover-refreshDataButton"]',
+      { timeout: 60000 }
+    ).then(($el) => {
+      if ($el.filter('[data-test-subj="discover-refreshDataButton"]').length) {
+        cy.getElementByTestId('discover-refreshDataButton').click();
+      }
+    });
+    cy.waitForSearch();
+  });
+
+  beforeEach(() => {
+    CURRENT_TENANT.newTenant = 'global';
+    cy.fleshTenantSettings();
+  });
+
+  after(() => {
+    cy.deleteIndex(indexSet.join(','));
+    cy.clearCache();
+  });
+
+  describe('shared links with state in query', () => {
+    it('should allow for copying the snapshot URL', function () {
+      // Expected URL components (order-independent comparison)
+      const expectedBase = 'http://localhost:5601/app/data-explorer/discover#/';
+      const expectedParams = {
+        _a: "(discover:(columns:!(_source),isDirty:!f,sort:!()),metadata:(indexPattern:'logstash-*',view:discover))",
+        _g: "(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:'2015-09-19T13:31:44.000Z',to:'2015-09-24T01:31:44.000Z'))",
+        _q: "(filters:!(),query:(language:kuery,query:''))",
+      };
+
+      cy.getElementByTestId('shareTopNavButton').should('be.visible').click();
+      cy.getElementByTestId('copyShareUrlButton')
+        .invoke('attr', 'data-share-url')
+        .should('satisfy', (shareUrl) => {
+          // Remove security tenant param if present
+          const cleanUrl = shareUrl.replace(
+            /\?security_tenant=(global|private)/,
+            ''
+          );
+
+          // Check base URL
+          if (!cleanUrl.startsWith(expectedBase)) {
+            return false;
+          }
+
+          // Parse the hash parameters
+          const hashPart = cleanUrl.split('#/?')[1];
+          if (!hashPart) {
+            return false;
+          }
+
+          // Parse URL params from hash (they use & as separator)
+          const params = {};
+          hashPart.split('&').forEach((param) => {
+            const [key, ...valueParts] = param.split('=');
+            params[key] = valueParts.join('=');
+          });
+
+          // Compare each expected param
+          return Object.keys(expectedParams).every(
+            (key) => params[key] === expectedParams[key]
+          );
+        })
+        .then((url) => {
+          cy.log(url);
+          cy.request(url).its('status').should('eq', 200);
+        });
+    });
+
+    it('should allow for copying the snapshot URL as a short URL', function () {
+      cy.getElementByTestId('useShortUrl')
+        .should('be.visible')
+        .invoke('attr', 'aria-checked', 'true');
+      cy.wait(1000);
+      // For some reasons, after making the toggle true, the data-share-url do not get updated in the cypress test
+      // Thus only testing if the button is clickable, instead of comparing the actual URL
+      cy.getElementByTestId('copyShareUrlButton').should('be.visible').click();
+    });
+
+    it('should allow for copying the saved object URL', function () {
+      const url =
+        'http://localhost:5601/app/data-explorer/discover/#/view/ab12e3c0-f231-11e6-9486-733b1ac9221a?_g=%28filters%3A%21%28%29%2CrefreshInterval%3A%28pause%3A%21t%2Cvalue%3A0%29%2Ctime%3A%28from%3A%272015-09-19T13%3A31%3A44.000Z%27%2Cto%3A%272015-09-24T01%3A31%3A44.000Z%27%29%29';
+
+      cy.getElementByTestId('exportAsSavedObject')
+        .get('.euiRadio__input')
+        .should('be.disabled');
+
+      // Load a save search
+      cy.loadSaveSearch('A Saved Search');
+
+      cy.getElementByTestId('shareTopNavButton').should('be.visible').click();
+      cy.getElementByTestId('exportAsSavedObject').should('be.visible').click();
+      cy.getElementByTestId('copyShareUrlButton')
+        .invoke('attr', 'data-share-url')
+        .should('eq', url)
+        .then((url) => {
+          cy.log(url);
+          cy.request(url).its('status').should('eq', 200);
+        });
+    });
+  });
+
+  describe('shared links with state in sessionStorage', () => {
+    before(() => {
+      CURRENT_TENANT.newTenant = 'global';
+      cy.fleshTenantSettings();
+      cy.setAdvancedSetting({
+        'state:storeInSessionStorage': true,
+      });
+
+      miscUtils.visitPage(
+        `app/data-explorer/discover#/?_g=(filters:!(),time:(from:'2015-09-19T13:31:44.000Z',to:'2015-09-24T01:31:44.000Z'))`
+      );
+      cy.waitForLoader();
+      // With state:storeInSessionStorage, the page may land in uninitialized state
+      cy.get(
+        '[data-test-subj="docTable"], [data-test-subj="discoverNoResults"], [data-test-subj="loadingSpinner"], [data-test-subj="discover-refreshDataButton"]',
+        { timeout: 60000 }
+      ).then(($el) => {
+        if (
+          $el.filter('[data-test-subj="discover-refreshDataButton"]').length
+        ) {
+          cy.getElementByTestId('discover-refreshDataButton').click();
+        }
+      });
+      cy.waitForSearch();
+    });
+
+    after(() => {
+      CURRENT_TENANT.newTenant = 'global';
+      cy.fleshTenantSettings();
+      cy.deleteSavedObjectByType('config');
+    });
+
+    it('should allow for copying the snapshot URL', function () {
+      // Wait for page to stabilize after sessionStorage state changes
+      cy.wait(2000);
+      cy.getElementByTestId('shareTopNavButton').should('be.visible').click();
+      cy.getElementByTestId('copyShareUrlButton')
+        .invoke('attr', 'data-share-url')
+        .then((url) => {
+          cy.log(url);
+          cy.request(url).its('status').should('eq', 200);
+        });
+    });
+
+    it('should allow for copying the snapshot URL as a short URL', function () {
+      cy.getElementByTestId('useShortUrl').should('be.visible').click();
+      cy.getElementByTestId('copyShareUrlButton')
+        .invoke('attr', 'data-share-url')
+        .then((url) => {
+          cy.log(url);
+          cy.request(url).its('status').should('eq', 200);
+        });
+    });
+
+    it('should allow for copying the saved object URL', function () {
+      cy.getElementByTestId('exportAsSavedObject')
+        .get('.euiRadio__input')
+        .should('be.disabled');
+
+      // Load a save search
+      cy.loadSaveSearch('A Saved Search');
+
+      cy.getElementByTestId('shareTopNavButton').should('be.visible').click();
+      cy.getElementByTestId('exportAsSavedObject').should('be.visible').click();
+      cy.getElementByTestId('copyShareUrlButton')
+        .invoke('attr', 'data-share-url')
+        .then((url) => {
+          cy.log(url);
+          cy.request(url).its('status').should('eq', 200);
+        });
+    });
+  });
+});

@@ -1,0 +1,15 @@
+{
+  "mappings": {
+    "properties": {
+      "dns.answers.type": {
+        "type": "text"
+      },
+      "dns.question.name": {
+        "type": "text"
+      },
+      "dns.question.registered_domain": {
+        "type": "text"
+      }
+    }
+  }
+}

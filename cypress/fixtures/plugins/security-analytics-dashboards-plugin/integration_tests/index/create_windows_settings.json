@@ -1,0 +1,12 @@
+{
+  "mappings": {
+    "properties": {
+      "EventID": {
+        "type": "integer"
+      },
+      "winlog.provider_name": {
+        "type": "text"
+      }
+    }
+  }
+}

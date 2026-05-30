@@ -1,0 +1,12 @@
+{
+  "properties": {
+    "winlog.event_id": {
+      "type": "alias",
+      "path": "EventID"
+    },
+    "winlog-provider_name": {
+      "type": "alias",
+      "path": "winlog.provider_name"
+    }
+  }
+}

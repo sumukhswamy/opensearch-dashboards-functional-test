@@ -1,0 +1,8 @@
+{
+  "properties": {
+    "winlog.event_id": {
+      "path": "EventID",
+      "type": "alias"
+    }
+  }
+}

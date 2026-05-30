@@ -1,0 +1,89 @@
+/*
+ * Copyright OpenSearch Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { MiscUtils } from '@opensearch-dashboards-test/opensearch-dashboards-test-library';
+import { CURRENT_TENANT } from '../../../../../utils/commands';
+
+const miscUtils = new MiscUtils(cy);
+const indexSet = [
+  'logstash-2015.09.22',
+  'logstash-2015.09.21',
+  'logstash-2015.09.20',
+];
+
+describe('discover tab', () => {
+  before(() => {
+    CURRENT_TENANT.newTenant = 'global';
+    // import logstash functional
+    cy.importJSONDocIfNeeded(
+      indexSet,
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/logstash/logstash.mappings.json.txt',
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/logstash/logstash.json.txt'
+    );
+
+    cy.importJSONMapping(
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/discover/discover.mappings.json.txt'
+    );
+
+    cy.importJSONDoc(
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/discover/discover.json.txt'
+    );
+
+    cy.setAdvancedSetting({
+      defaultIndex: 'logstash-*',
+    });
+
+    miscUtils.visitPage(
+      `app/data-explorer/discover#/?_g=(filters:!(),time:(from:'2015-09-19T13:31:44.000Z',to:'2015-09-24T01:31:44.000Z'))`
+    );
+    cy.waitForLoader();
+    cy.get(
+      '[data-test-subj="docTable"], [data-test-subj="discoverNoResults"], [data-test-subj="loadingSpinner"], [data-test-subj="discover-refreshDataButton"]',
+      { timeout: 60000 }
+    ).then(($el) => {
+      if ($el.filter('[data-test-subj="discover-refreshDataButton"]').length) {
+        cy.getElementByTestId('discover-refreshDataButton').click();
+      }
+    });
+    cy.waitForSearch();
+  });
+
+  after(() => {});
+
+  describe('field data', function () {
+    it('search php should show the correct hit count', function () {
+      const expectedHitCount = '445';
+      cy.setTopNavQuery('php');
+      cy.verifyHitCount(expectedHitCount);
+    });
+
+    it('the search term should be highlighted in the field data', function () {
+      cy.getElementByTestId('discoverTable')
+        .get('mark')
+        .should('have.length.at.least', 50);
+    });
+
+    it('search type:apache should show the correct hit count', () => {
+      const expectedHitCount = '11,156';
+      cy.setTopNavQuery('type:apache');
+      cy.verifyHitCount(expectedHitCount);
+    });
+
+    it('doc view should show Time and _source columns', function () {
+      cy.getElementByTestId('docTableHeader-@timestamp').should('be.visible');
+      cy.getElementByTestId('docTableHeader-_source').should('be.visible');
+    });
+
+    it('doc view should sort ascending', function () {
+      cy.getElementByTestId('docTableHeaderFieldSort_@timestamp').click();
+    });
+
+    it('a bad syntax query should show an error message', function () {
+      cy.getElementByTestId('queryInput').clear();
+      cy.setTopNavQuery('xxx(yyy))');
+      cy.getElementByTestId('errorToastMessage').should('be.visible');
+    });
+  });
+});

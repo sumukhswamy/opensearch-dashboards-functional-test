@@ -1,0 +1,354 @@
+/*
+ * Copyright OpenSearch Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+import {
+  MiscUtils,
+  TestFixtureHandler,
+} from '@opensearch-dashboards-test/opensearch-dashboards-test-library';
+import { cloneDeep } from 'lodash';
+import { CURRENT_TENANT } from '../../../../../utils/commands';
+
+const miscUtils = new MiscUtils(cy);
+const testFixtureHandler = new TestFixtureHandler(
+  cy,
+  Cypress.env('openSearchUrl')
+);
+
+const indexSet = [
+  'logstash-2015.09.22',
+  'logstash-2015.09.21',
+  'logstash-2015.09.20',
+];
+
+describe('discover_table', () => {
+  before(() => {
+    CURRENT_TENANT.newTenant = 'global';
+    testFixtureHandler.importJSONDocIfNeeded(
+      indexSet,
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/logstash/logstash.mappings.json.txt',
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/logstash/logstash.json.txt'
+    );
+
+    testFixtureHandler.importJSONMapping(
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/discover/discover.mappings.json.txt'
+    );
+
+    testFixtureHandler.importJSONDoc(
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/discover/discover.json.txt'
+    );
+
+    testFixtureHandler.importJSONMapping(
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/index_with_nested_field/mappings.json.txt'
+    );
+
+    testFixtureHandler.importJSONDoc(
+      'cypress/fixtures/dashboard/opensearch_dashboards/data_explorer/index_with_nested_field/data.json.txt'
+    );
+
+    cy.setAdvancedSetting({
+      defaultIndex: 'logstash-*',
+    });
+
+    miscUtils.visitPage(
+      `app/data-explorer/discover#/?_g=(filters:!(),time:(from:'2015-09-19T13:31:44.000Z',to:'2015-09-24T01:31:44.000Z'))`
+    );
+    cy.waitForSearch();
+  });
+
+  describe('auto line wrapping in legacy table', () => {
+    it('auto line wrapping in legacy table', function () {
+      cy.get('.euiDescriptionList__title').should('contain.text', '_score');
+    });
+  });
+
+  describe('expand multiple documents in legacy table', () => {
+    before(() => {
+      cy.wait(2000);
+    });
+
+    it('checks if multiple documents can be expanded in legacy table', function () {
+      cy.get('[data-test-subj="docTableExpandToggleColumn"]')
+        .find('[type="button"]')
+        .eq(2)
+        .click();
+
+      cy.get('[data-test-subj="docTableExpandToggleColumn"]')
+        .find('[type="button"]')
+        .eq(3)
+        .click();
+
+      cy.get('[data-test-subj="tableDocViewRow-_index"]').should(
+        'have.length',
+        2
+      );
+    });
+  });
+
+  describe('data source selector', () => {
+    before(() => {
+      cy.createIndexPattern(
+        'logstash-sample-1',
+        {
+          title: 'logstash-sample-1*',
+          timeFieldName: 'timestamp',
+        },
+        {
+          securitytenant: ['global'],
+        }
+      );
+      cy.createIndexPattern(
+        'logstash-sample-2',
+        {
+          title: 'logstash-sample-2*',
+          timeFieldName: 'timestamp',
+        },
+        {
+          securitytenant: ['global'],
+        }
+      );
+      cy.wait(5000);
+      cy.reload();
+    });
+
+    it('check data source selector options are ordered', function () {
+      const indexPatterns = [];
+      cy.get('[data-test-subj="comboBoxSearchInput"]')
+        .type('l')
+        .then(() => {
+          cy.get('[type="DEFAULT_INDEX_PATTERNS"]')
+            .each((res) => {
+              indexPatterns.push(res.text());
+            })
+            .then(() => {
+              const sortedIndexPatterns = cloneDeep(indexPatterns);
+              sortedIndexPatterns.sort();
+              cy.wrap(indexPatterns).should('deep.equal', sortedIndexPatterns);
+            });
+        });
+    });
+
+    it('check filtering in data source selector ', function () {
+      cy.get('[data-test-subj="comboBoxSearchInput"]')
+        .clear()
+        .type('logstash-sample')
+        .then(() => {
+          cy.get('[type="DEFAULT_INDEX_PATTERNS"]').should('have.length', 2);
+        });
+    });
+
+    after(() => {
+      cy.deleteIndexPattern('logstash-sample-1');
+      cy.deleteIndexPattern('logstash-sample-2');
+    });
+  });
+
+  describe('Infinity Scroll in legacy table', () => {
+    before(() => {
+      miscUtils.visitPage(
+        `app/data-explorer/discover#/?_g=(filters:!(),time:(from:'2015-09-19T13:31:44.000Z',to:'2015-09-24T01:31:44.000Z'))`
+      );
+      cy.waitForSearch();
+    });
+
+    describe('Legacy Table', () => {
+      it.skip('check scroll down adds 50 entries at a time', function () {
+        cy.get('[data-test-subj="docTableExpandToggleColumn"]').should(
+          'have.length',
+          100
+        );
+
+        cy.get('[data-test-subj="discoverDocTableFooter"]')
+          .scrollIntoView({ duration: 1000 })
+          .then(() => {
+            cy.get('[data-test-subj="docTableExpandToggleColumn"]').should(
+              'have.length',
+              200
+            );
+          });
+      });
+
+      it.skip('check maximum number of documents loaded', function () {
+        for (let i = 0; i < 10; i++) {
+          cy.get('[data-test-subj="discoverDocTableFooter"]').scrollIntoView({
+            duration: 100,
+          });
+          cy.wait(300);
+        }
+
+        cy.get('[data-test-subj="docTableExpandToggleColumn"]').should(
+          'have.length',
+          1000
+        );
+      });
+
+      it('check functionality of Back to top button', function () {
+        cy.get('[data-test-subj="discoverDocTableFooter"]')
+          .scrollIntoView({ duration: 1000 })
+          .then(() => {
+            cy.get('[data-test-subj="docTableField"]')
+              .contains('Sep 22, 2015 @ 16:50:13.253')
+              .should('not.be.visible');
+
+            cy.get('[type="button"]')
+              .contains('Back to top.')
+              .click()
+              .then(() => {
+                cy.get('[data-test-subj="docTableField"]')
+                  .contains('Sep 22, 2015 @ 16:50:13.253')
+                  .should('be.visible');
+              });
+          });
+      });
+    });
+  });
+
+  describe('AutoSize table', () => {
+    describe('Legacy Table', () => {
+      it('check table Auto Size with change in time range', function () {
+        cy.get('[data-test-subj="docTableExpandToggleColumn"]')
+          .its('length')
+          .then((noEntries) => {
+            cy.setTopNavDate(
+              'Sep 22, 2015 @ 14:00:00.000',
+              'Sep 22, 2015 @ 14:05:00.000'
+            );
+            cy.verifyHitCount('2');
+            cy.get('[data-test-subj="docTableExpandToggleColumn"]')
+              .its('length')
+              .should('be.lessThan', noEntries);
+          });
+      });
+
+      it('check table Auto Size with filter', function () {
+        cy.setTopNavDate(
+          'Sep 22, 2015 @ 14:00:00.000',
+          'Sep 22, 2015 @ 18:00:00.000'
+        );
+        cy.waitForLoader();
+        cy.get('[aria-label="Toggle row details"]')
+          .its('length')
+          .then((noEntries) => {
+            cy.get('[data-test-subj="field-extension-showDetails"]')
+              .click()
+              .then(() => {
+                cy.get('[data-test-subj="plus-extension-gif"]')
+                  .click()
+                  .then(() => {
+                    cy.verifyHitCount('1');
+                    cy.get('[aria-label="Toggle row details"]')
+                      .its('length')
+                      .should('be.lessThan', noEntries);
+                  });
+              });
+          });
+      });
+
+      after(() => {
+        miscUtils.visitPage(
+          `app/data-explorer/discover#/?_g=(filters:!(),time:(from:'2015-09-19T13:31:44.000Z',to:'2015-09-24T01:31:44.000Z'))`
+        );
+        cy.waitForSearch();
+      });
+    });
+  });
+
+  after(() => {
+    cy.reload();
+    cy.deleteIndexPattern('nestedindex');
+    cy.deleteIndex('nestedindex');
+    cy.clearCache();
+    miscUtils.visitPage(
+      `app/data-explorer/discover#/?_g=(filters:!(),time:(from:'2015-09-19T13:31:44.000Z',to:'2015-09-24T01:31:44.000Z'))`
+    );
+    cy.waitForSearch();
+  });
+});
+
+describe('Saved Queries', () => {
+  it('check creating saved query', () => {
+    miscUtils.visitPage(
+      `app/data-explorer/discover#/?_g=(filters:!(),time:(from:'2015-09-19T13:31:44.000Z',to:'2015-09-24T01:31:44.000Z'))`
+    );
+    cy.waitForSearch();
+
+    cy.get('[data-test-subj="saved-query-management-popover-button"]', {
+      timeout: 20000,
+    })
+      .should('be.visible')
+      .click({ force: true });
+
+    cy.get('[data-test-subj="saved-query-management-save-button"]')
+      .should('be.visible')
+      .click({ force: true });
+
+    cy.get('[data-test-subj="saveQueryFormTitle"]')
+      .should('be.visible')
+      .clear()
+      .type('Sample Saved Query');
+    cy.get('[data-test-subj="savedQueryFormSaveButton"]').click({
+      force: true,
+    });
+
+    cy.get('[data-test-subj="saveQueryForm"]').should('not.exist');
+
+    cy.get('[data-test-subj="saved-query-management-popover-button"]').click({
+      force: true,
+    });
+    cy.get('.euiListGroupItem', { timeout: 10000 }).should(
+      'contain.text',
+      'Sample Saved Query'
+    );
+  });
+});
+
+describe('Saved Search Embeddables', () => {
+  describe('Legacy Table', () => {
+    before(() => {
+      miscUtils.visitPage(
+        `app/data-explorer/discover#/?_g=(filters:!(),time:(from:'2015-09-19T13:31:44.000Z',to:'2015-09-24T01:31:44.000Z'))`
+      );
+      cy.waitForSearch();
+      cy.get('[data-test-subj="discoverSaveButton"]')
+        .click()
+        .then(() => {
+          cy.get('[data-test-subj="savedObjectTitle"]')
+            .clear()
+            .type('Legacy Saved Search');
+          cy.get('[data-test-subj="confirmSaveSavedObjectButton"]').click();
+        });
+      cy.get('[data-test-subj="savedObjectSaveModal"]').should('not.exist');
+    });
+
+    it('check adding legacy table saved search embeddable in dashboard', function () {
+      miscUtils.visitPage(
+        `/app/dashboards#/create?_g=(filters:!(),time:(from:'2015-09-19T13:31:44.000Z',to:'2015-09-24T01:31:44.000Z'))`
+      );
+      cy.get('[data-test-subj="dashboardAddPanelButton"]').click();
+      cy.get('[data-test-subj="savedObjectTitleLegacy-Saved-Search"]').click();
+      cy.get('[data-test-subj="euiFlyoutCloseButton"]').click();
+      cy.get('[data-test-subj="docTableHeader-@timestamp"]').should(
+        'be.visible'
+      );
+      cy.get('[data-test-subj="docTableHeader-_source"]').should('be.visible');
+    });
+
+    it('check sort order is retained in legacy table saved search embeddable', function () {
+      cy.get('[data-test-subj="docTableField"]')
+        .eq(0)
+        .invoke('text')
+        .then((firstDate) => {
+          cy.get('[data-test-subj="docTableField"]')
+            .eq(2)
+            .invoke('text')
+            .then((secondDate) => {
+              expect(new Date(secondDate)).lessThan(new Date(firstDate));
+            });
+        });
+    });
+  });
+
+  after(() => {
+    cy.deleteSavedObjectByType('search');
+  });
+});
